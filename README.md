@@ -1,59 +1,86 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# KORAX — API (epk-back)
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+The Laravel API backing [KORAX](https://github.com/iheblhbib/epk-front), an Electronic Press Kit (EPK) SaaS platform — build, theme, and share professional press kits for artists, labels, and agencies. Built to run on standard shared cPanel hosting (Apache, PHP, MySQL — no Docker, no Redis, no persistent Node server).
 
-## About Laravel
+> **This repo used to be the `backend/` folder of a single monorepo.** It's now split into two independent repos: this one (the API) and [`epk-front`](https://github.com/iheblhbib/epk-front) (the React SPA). See [docs/architecture.md](docs/architecture.md) for the reasoning and [docs/cpanel-deployment.md](docs/cpanel-deployment.md) for shipping both sides to production.
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+This repository is at **Phase 16: cPanel Deployment Preparation** — the full product (EPK builder, public/private sharing, analytics, contacts CRM, team management, admin panel, billing, and a security/testing hardening pass) is built; only Phase 17 (final documentation polish) remains. See [ROADMAP.md](ROADMAP.md) for what's built phase-by-phase.
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+## Local development setup (Windows)
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+### 1. Prerequisites
 
-## Learning Laravel
+- **[Laragon](https://laragon.org/)** with **PHP 8.2 or 8.3** selected as the active version, and its bundled MySQL running. (This project was verified against PHP 8.3.33 / MySQL 8.4 via Laragon.)
+- **Composer 2.x**.
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework. You can also check out [Laravel Learn](https://laravel.com/learn), where you will be guided through building a modern Laravel application.
+Laragon installs its binaries under `C:\laragon\bin\...` without necessarily adding them to your system `PATH`. If `php -v` or `composer -v` doesn't resolve, either add the relevant `C:\laragon\bin\php\<version>` and `C:\laragon\bin\mysql\<version>\bin` folders to `PATH`, or reference the binaries by their full path.
 
-If you don't feel like reading, [Laracasts](https://laracasts.com) can help. Laracasts contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+You'll also want the [`epk-front`](https://github.com/iheblhbib/epk-front) repo checked out alongside this one (as a sibling directory) if you're working on the full app end to end — Node.js is only needed over there.
 
-## Laravel Sponsors
+### 2. Database
 
-We would like to extend our thanks to the following sponsors for funding Laravel development. If you are interested in becoming a sponsor, please visit the [Laravel Partners program](https://partners.laravel.com).
+Create a dedicated database and a scoped (non-root) user — mirroring how cPanel provisions MySQL accounts:
 
-### Premium Partners
+```sql
+CREATE DATABASE epk_dev CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE USER 'epk_user'@'localhost' IDENTIFIED BY '<a strong password>';
+GRANT ALL PRIVILEGES ON epk_dev.* TO 'epk_user'@'localhost';
+FLUSH PRIVILEGES;
+```
 
-- **[Vehikl](https://vehikl.com)**
-- **[Tighten Co.](https://tighten.co)**
-- **[Kirschbaum Development Group](https://kirschbaumdevelopment.com)**
-- **[64 Robots](https://64robots.com)**
-- **[Curotec](https://www.curotec.com/services/technologies/laravel)**
-- **[DevSquad](https://devsquad.com/hire-laravel-developers)**
-- **[Redberry](https://redberry.international/laravel-development)**
-- **[Active Logic](https://activelogic.com)**
+A second database, `epk_test`, is used by the automated test suite (see `phpunit.xml`) so tests never touch your dev data. Create it the same way and grant the same user access to it.
 
-## Contributing
+We deliberately use MySQL for local development rather than SQLite: production is MySQL-only, and the app relies on MySQL-specific features (JSON columns, FULLTEXT search), so local dev should mirror it exactly.
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+### 3. Install and configure
 
-## Code of Conduct
+```bash
+composer install
+cp .env.example .env
+php artisan key:generate
+```
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+Edit `.env` — at minimum set `DB_DATABASE`, `DB_USERNAME`, `DB_PASSWORD` to match what you created above, and:
 
-## Security Vulnerabilities
+```
+APP_URL=http://localhost:8000
+FRONTEND_URL=http://localhost:5173
+SANCTUM_STATEFUL_DOMAINS=localhost:5173,127.0.0.1:5173
+SESSION_DOMAIN=localhost
+SESSION_SECURE_COOKIE=false
+```
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+`MAIL_MAILER=log` is a good default for local dev — verification/invitation emails get written to `storage/logs/laravel.log` (including the link) instead of actually sending, so you don't need a working SMTP account just to test auth flows.
 
-## License
+### 4. Run it
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+```bash
+php artisan migrate --seed
+php artisan storage:link
+php artisan serve
+```
+
+The API is now running at `http://localhost:8000`. `storage:link` uses PHP's `symlink()` — on Windows this needs either **Developer Mode** enabled (Settings → Update & Security → For Developers) or an elevated terminal; it works without any special privileges on cPanel/Linux.
+
+The seeder creates a demo login: **demo@korax.test** / **password**, already a member of a seeded "KORAX Demo" workspace (as owner), with a second teammate and one pending invitation — so the dashboard isn't empty on first login (once you also have `epk-front` running against this API).
+
+### 5. Verify everything works
+
+```bash
+php artisan test        # or vendor/bin/pest
+vendor/bin/pint --test  # code style
+php artisan route:list  # sanity check
+```
+
+## Tech stack
+
+PHP 8.2+, Laravel 12, MySQL, Laravel Sanctum (SPA cookie auth), Eloquent, Policies, database-driven queues and file-based cache (no Redis), Pest for testing.
+
+Full reasoning for these choices — especially the decoupled backend/frontend split and how it maps onto cPanel deployment — is in [docs/architecture.md](docs/architecture.md).
+
+## Documentation
+
+- [ROADMAP.md](ROADMAP.md) — the 17-phase build plan and what's done so far.
+- [docs/architecture.md](docs/architecture.md) — system architecture, auth model, authorization design, API conventions.
+- [docs/cpanel-deployment.md](docs/cpanel-deployment.md) — step-by-step production deployment: subdomain topology, `.env` setup, SSL, cron, and the redeploy process, for both this repo and `epk-front`.
+- [docs/database.md](docs/database.md), [docs/security.md](docs/security.md), [docs/storage.md](docs/storage.md), [docs/custom-domains.md](docs/custom-domains.md), [docs/api.md](docs/api.md), [docs/stripe.md](docs/stripe.md) — deeper reference on specific subsystems.
