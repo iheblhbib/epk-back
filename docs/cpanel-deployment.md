@@ -1,10 +1,8 @@
 # cPanel Deployment Guide
 
-> **Two repos, not one** — see the note at the top of [`architecture.md`](architecture.md). Wherever this doc says `frontend/...`, that's a path inside the separate [`epk-front`](https://github.com/iheblhbib/epk-front) repo, not a subfolder here; `backend/`-prefixed paths from before the split are just this repo's own root now (already fixed below).
+This covers deploying KORAXX to standard shared cPanel hosting — no Docker, no root access, no persistent Node process, no Redis. If your host offers something better (a VPS, Laravel Forge, Ploi, etc.), this guide still mostly applies but you have more options than assumed here.
 
-This covers deploying KORAX to standard shared cPanel hosting — no Docker, no root access, no persistent Node process, no Redis. If your host offers something better (a VPS, Laravel Forge, Ploi, etc.), this guide still mostly applies but you have more options than assumed here.
-
-See [`architecture.md`](architecture.md) for *why* the app is split into a static-built `frontend/` repo and an API-only backend repo (this one) — this doc is the *how*.
+See [`architecture.md`](architecture.md) for *why* the app is split into a static-built `frontend/` and an API-only `backend/` — this doc is the *how*.
 
 ## Prerequisites
 
@@ -17,13 +15,13 @@ See [`architecture.md`](architecture.md) for *why* the app is split into a stati
 ## 1. Topology: subdomain split (recommended)
 
 - `epk.karthagopm.com` → document root **`frontend/dist`** (the static SPA build)
-- `api.karthagopm.com` → document root **`public`** (Laravel's public dir, same as any Laravel deploy)
+- `api.karthagopm.com` → document root **`backend/public`** (Laravel's public dir, same as any Laravel deploy)
 
 Create both as Subdomains in cPanel (not Addon Domains) pointing at two new, otherwise-empty directories — e.g. `~/epk.karthagopm.com` and `~/api.karthagopm.com` — cPanel creates the document root for you when you create the subdomain.
 
 ## 2. Deploy the backend
 
-1. Upload the `` directory's contents to `~/api.karthagopm.com` — everything **except** `vendor/` and `node_modules/` (there is no `node_modules/` in the backend; `vendor/` you'll generate on the server in the next step). Easiest via `git clone`/`git pull` over SSH if your repo is on GitHub/GitLab; otherwise `rsync` or the cPanel File Manager's upload+extract-zip flow both work.
+1. Upload the `backend/` directory's contents to `~/api.karthagopm.com` — everything **except** `vendor/` and `node_modules/` (there is no `node_modules/` in the backend; `vendor/` you'll generate on the server in the next step). Easiest via `git clone`/`git pull` over SSH if your repo is on GitHub/GitLab; otherwise `rsync` or the cPanel File Manager's upload+extract-zip flow both work.
 2. SSH in, `cd ~/api.karthagopm.com`, and run:
    ```bash
    composer install --no-dev --optimize-autoloader
@@ -43,7 +41,7 @@ Create both as Subdomains in cPanel (not Addon Domains) pointing at two new, oth
 
 ### Environment variables
 
-The checked-in [`.env.example`](../.env.example) already has the production-shaped defaults (`APP_ENV=production`, `APP_DEBUG=false`, `SESSION_DRIVER=database`, `CACHE_STORE=file`, `SESSION_SECURE_COOKIE=true`, etc.) — copy it as the starting point and fill in the environment-specific values:
+The checked-in [`backend/.env.example`](../backend/.env.example) already has the production-shaped defaults (`APP_ENV=production`, `APP_DEBUG=false`, `SESSION_DRIVER=database`, `CACHE_STORE=file`, `SESSION_SECURE_COOKIE=true`, etc.) — copy it as the starting point and fill in the environment-specific values:
 
 | Variable | Value |
 |---|---|
@@ -93,7 +91,7 @@ Laravel's scheduler needs exactly one cron entry, regardless of how many schedul
 * * * * * cd /home/youruser/api.karthagopm.com && php artisan schedule:run >> /dev/null 2>&1
 ```
 
-**As of this phase, `routes/console.php` doesn't register any scheduled tasks** — there's nothing for this cron entry to actually trigger yet (no queued jobs exist anywhere in the app either — every notification sends synchronously specifically so a deploy with no queue worker never silently drops one, see [`WorkspaceInvitationNotification`](../app/Notifications/WorkspaceInvitationNotification.php)). Set up the cron entry anyway; it's inert until something is scheduled and costs nothing to have running. Laravel's database-driven session garbage collection (pruning expired rows from the `sessions` table) already happens automatically via its built-in probabilistic "lottery" on ordinary requests — no cron needed for that specifically.
+**As of this phase, `routes/console.php` doesn't register any scheduled tasks** — there's nothing for this cron entry to actually trigger yet (no queued jobs exist anywhere in the app either — every notification sends synchronously specifically so a deploy with no queue worker never silently drops one, see [`WorkspaceInvitationNotification`](../backend/app/Notifications/WorkspaceInvitationNotification.php)). Set up the cron entry anyway; it's inert until something is scheduled and costs nothing to have running. Laravel's database-driven session garbage collection (pruning expired rows from the `sessions` table) already happens automatically via its built-in probabilistic "lottery" on ordinary requests — no cron needed for that specifically.
 
 ## 6. Redeploying after the first deploy
 
@@ -123,7 +121,7 @@ php artisan optimize:clear && php artisan optimize  # always — stale route/con
 
 If your plan genuinely has no SSH or Terminal access (some of the cheapest shared tiers), the backend deploy changes as follows — the frontend deploy is unaffected, since it's just static files uploaded via File Manager/FTP either way:
 
-1. **Build `vendor/` locally**, not on the server: `cd backend && composer install --no-dev --optimize-autoloader`, then upload the whole `` directory including `vendor/` this time.
+1. **Build `vendor/` locally**, not on the server: `cd backend && composer install --no-dev --optimize-autoloader`, then upload the whole `backend/` directory including `vendor/` this time.
 2. **Running `artisan` commands without a shell** is the real obstacle. Options, roughly best to worst:
    - Check whether your host's cPanel has a "PHP command line" / "Run PHP Script" feature under Software or Advanced — several cPanel builds do, and it runs `artisan` exactly like SSH would.
    - Temporarily add a single locked-down one-time route in `routes/web.php` that shells out to the specific artisan commands you need (`migrate --force`, `key:generate`, `storage:link`), gated by a random secret token in the URL and deleted from the code again immediately after use. This is a real (if inelegant) escape hatch — never leave such a route in place.
@@ -134,7 +132,7 @@ If your plan genuinely has no SSH or Terminal access (some of the cheapest share
 
 If you truly can't get a second subdomain, skip the split above and instead:
 
-1. Build the frontend (`npm run build`) and copy `frontend/dist/*` into `public/` at deploy time (a build step, not a permanent repo change — `public/` stays Laravel's own directory in source control).
+1. Build the frontend (`npm run build`) and copy `frontend/dist/*` into `backend/public/` at deploy time (a build step, not a permanent repo change — `backend/public/` stays Laravel's own directory in source control).
 2. Add a catch-all fallback route so any URL that isn't `/api/*` or a real static file serves the SPA's `index.html`, letting React Router take over client-side:
    ```php
    // routes/web.php
